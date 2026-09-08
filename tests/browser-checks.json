@@ -1,0 +1,21 @@
+{
+  "browser": "Microsoft Edge Chromium desktop, mobile viewport emulation",
+  "checks": [
+    "Empty input validation",
+    "Duplicate input validation",
+    "Worker cancellation and responsive UI",
+    "Real Blob Worker full 45-number baseline: U 5239128 / C4 100833 / C5 2350",
+    "Copy all ten games",
+    "Download result with exact coverage",
+    "localStorage restore",
+    "390px mobile page has no horizontal overflow",
+    "320 / 360 / 430 / 768px responsive widths",
+    "PWA service-worker offline reload",
+    "Reset input",
+    "Offline Worker starts without network",
+    "No page errors and no external requests",
+    "file:// offline Blob Worker completes universe scan"
+  ],
+  "errors": [],
+  "external": []
+}

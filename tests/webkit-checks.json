@@ -1,0 +1,13 @@
+{
+  "engine": "Playwright WebKit 26.5 on Windows with mobile viewport, not physical iPhone Safari",
+  "fullBaseline": {
+    "universeSize": 5239128,
+    "c4": 100833,
+    "c5": 2350,
+    "elapsedMs": 27733
+  },
+  "serverStoppedCachedReload": true,
+  "serverStoppedWorker": true,
+  "chromeFileOfflineWorker": true,
+  "limitation": "First run context.setOffline(true) navigation failed with WebKit internal error; server-stopped cache test run separately."
+}
