@@ -2,8 +2,11 @@
  * Loaded as a classic script, its factory can be serialized into a Blob Worker.
  * This also avoids file:// Worker script-origin restrictions in desktop browsers.
  */
+if(typeof module!=='undefined'&&module.exports)globalThis.createLottoShared=require('./shared.js').createLottoShared;
+else if(typeof document==='undefined'&&typeof createLottoShared==='undefined')importScripts('./shared.js');
 function createLottoEngine() {
   'use strict';
+  const S=createLottoShared();
   const B = Array.from({length: 7}, () => new Int32Array(46));
   for (let n=0;n<=45;n++) {
     B[0][n]=1;
@@ -15,34 +18,10 @@ function createLottoEngine() {
     for(let i=start;i<6;i++) subsets(k,i+1,a.concat(i));
   }
   subsets(4); subsets(5);
-  function validateInput(input) {
-    let a;
-    if(typeof input==='string') {
-      const tokens=input.trim().split(/[\s,]+/);
-      if(tokens.some(t=>!/^\d+$/.test(t))) throw Error('정수 6개를 입력해주세요.');
-      a=tokens.map(Number);
-    } else if(Array.isArray(input)) a=input.slice();
-    else throw Error('번호 6개를 입력해주세요.');
-    if(a.length!==6) throw Error('번호를 정확히 6개 입력해주세요.');
-    if(a.some(x=>!Number.isInteger(x)||x<1||x>45)) throw Error('번호는 1~45 사이의 정수여야 합니다.');
-    if(new Set(a).size!==6) throw Error('같은 번호를 두 번 입력할 수 없습니다.');
-    return a.sort((x,y)=>x-y);
-  }
-  function passes(a,p) {
-    let odd=0,overlap=0;
-    for(let i=0;i<6;i++) {
-      odd+=a[i]&1; overlap+=p[a[i]];
-      if(i && a[i]-a[i-1]>19) return false;
-      if(i>=2 && a[i]===a[i-1]+1 && a[i-1]===a[i-2]+1) return false;
-    }
-    return overlap<=2 && odd>=2 && odd<=4 && a[5]-a[0]>12;
-  }
-  function passesFilters(a,previous) {
-    try {
-      a=validateInput(Array.from(a)); previous=validateInput(previous);
-      const p=new Uint8Array(46); previous.forEach(x=>p[x]=1);
-      return passes(a,p);
-    } catch(_) { return false; }
+  const validateInput=S.validateNumbers;
+  function passesFilters(a,previous,history=[]) {
+    try {a=validateInput(Array.from(a));const banned=new Set(history.map(r=>rank(validateInput(Array.isArray(r)?r:r.numbers))));
+      return S.failureMask(a,S.flags(previous),banned.has(rank(a)))===0;}catch(_){return false;}
   }
   function rank(a) { let r=0; for(let i=0;i<a.length;i++) r+=B[i+1][a[i]-1]; return r; }
   function unrank(id,n=45,a=new Uint8Array(6)) {
@@ -99,15 +78,18 @@ function createLottoEngine() {
     }
     tick(1);
   }
-  function generateUniverse(previous,n=45,tick) {
+  function generateUniverse(previous,n=45,tick,history=[]) {
     previous=validateInput(previous);
     if(!Number.isInteger(n)||n<6||n>45) throw Error('잘못된 번호 공간입니다.');
-    const u={previous,n,total:B[6][n],size:0,bits:new Uint8Array(Math.ceil(B[6][n]/8)),
+    const excluded=new Set(history.map(row=>validateInput(Array.isArray(row)?row:row.numbers)).filter(a=>a[5]<=n).map(rank));
+    const u={previous,n,total:B[6][n],size:0,independent:Array(9).fill(0),sequential:Array(9).fill(0),bits:new Uint8Array(Math.ceil(B[6][n]/8)),
       d4:new Int32Array(B[4][n]),d5:new Int32Array(B[5][n])};
     const p=new Uint8Array(46),r4=new Int32Array(15),r5=new Int32Array(6);
     previous.forEach(x=>p[x]=1);
     walk(n,(a,id)=>{
-      if(!passes(a,p)) return;
+      const failures=S.failureMask(a,p,excluded.has(id));
+      for(let k=0;k<9;k++)if(failures&(1<<k))u.independent[k]++;
+      if(failures){for(let k=0;k<9;k++)if(failures&(1<<k)){u.sequential[k]++;break;}return;}
       u.bits[id>>>3]|=1<<(id&7); u.size++;
       subsetRanks(a,r4,r5);
       for(let i=0;i<15;i++) u.d4[r4[i]]++;
@@ -140,7 +122,7 @@ function createLottoEngine() {
     constructor(u) {
       this.u=u; this.d4=u.d4.slice(); this.d5=u.d5.slice(); this.e5=u.d5.slice();
       this.refs4=new Uint8Array(u.total);this.refs5=new Uint8Array(u.total);
-      this.c4=0;this.c5=0;this.cache=new Map();
+      this.c4=0;this.c5=0;this.metrics={candidateScans:0,localSweeps:0,acceptedSwaps:0};this.cache=new Map();
       this.a=new Uint8Array(6);this.r4=new Int32Array(15);this.r5=new Int32Array(6);
     }
     reset() {
@@ -182,8 +164,9 @@ function createLottoEngine() {
       return [v4,v5];
     }
     best(excluded=[],floor4=0,secondary=false,tick) {
-      const exclusions=new Set(excluded),r4=this.r4,r5=this.r5;
-      let best=-1,best4=-1,best5=-1;
+      this.metrics.candidateScans++;
+      const exclusions=new Set(excluded),r4=this.r4,r5=this.r5,others=excluded.map(id=>Array.from(unrank(id,this.u.n)));
+      let best=-1,best4=-1,best5=-1,bestOverlap=Infinity;
       walk(this.u.n,(a,id)=>{
         if(exclusions.has(id)) return;
         subsetRanks(a,r4,r5);
@@ -193,8 +176,10 @@ function createLottoEngine() {
         if(this.c4+v4<floor4 || (!secondary && v4<best4)) return;
         let v5=this.refs5[id]===0?-5:0;
         for(let j=0;j<6;j++) v5+=this.e5[r5[j]];
-        if(secondary ? v5>best5||(v5===best5&&v4>best4) : v4>best4||(v4===best4&&v5>best5)) {
-          best=id;best4=v4;best5=v5;
+        const better=secondary ? v5>best5||(v5===best5&&v4>best4) : v4>best4||(v4===best4&&v5>best5);
+        if(better||(v4===best4&&v5===best5)) {
+          const overlap=others.reduce((sum,t)=>sum+t.filter(x=>a.includes(x)).length,0);
+          if(better||overlap<bestOverlap){best=id;best4=v4;best5=v5;bestOverlap=overlap;}
         }
       },tick,this.u);
       if(best<0) throw Error('조건을 만족하는 후보가 없습니다.');
@@ -214,7 +199,7 @@ function createLottoEngine() {
   function localSearch(selected,state,secondary=false,record=state.c4,progress=()=>{}) {
     selected=selected.slice();record=Math.max(record,state.c4);let sweep=0;
     while(true) {
-      sweep++;let improved=false;
+      sweep++;state.metrics.localSweeps++;let improved=false;
       for(let slot=0;slot<selected.length;slot++) {
         const old=selected[slot],before4=state.c4,before5=state.c5;
         state.change(old,-1);
@@ -222,9 +207,11 @@ function createLottoEngine() {
         const candidate=state.best(others,secondary?Math.ceil(record*995/1000):0,secondary,
           p=>progress({sweep,slot,scan:p,c4:before4,c5:before5}));
         state.change(candidate,1);
-        const better=secondary ? state.c5>before5||(state.c5===before5&&state.c4>before4)
+        const coverageBetter=secondary ? state.c5>before5||(state.c5===before5&&state.c4>before4)
           :state.c4>before4||(state.c4===before4&&state.c5>before5);
-        if(better) {selected[slot]=candidate;record=Math.max(record,state.c4);improved=true;}
+        const overlap=id=>{const a=Array.from(unrank(id,state.u.n));return others.reduce((sum,t)=>sum+Array.from(unrank(t,state.u.n)).filter(x=>a.includes(x)).length,0);};
+        const better=coverageBetter||(state.c4===before4&&state.c5===before5&&overlap(candidate)<overlap(old));
+        if(better) {state.metrics.acceptedSwaps++;selected[slot]=candidate;record=Math.max(record,state.c4);improved=true;}
         else {state.change(candidate,-1);state.change(old,1);}
         progress({sweep,slot,scan:1,c4:state.c4,c5:state.c5});
       }
@@ -267,11 +254,13 @@ function createLottoEngine() {
     if(c4!==union4||c5!==union5||checked!==u.size) throw Error('전체 Universe 검산 불일치: 결과를 사용할 수 없습니다.');
     const matrix=tickets.map(a=>tickets.map(b=>a.filter(x=>b.includes(x)).length));
     const upper=selected.length*(15*B[2][u.n-6]+6*(u.n-6)+1);
-    return {tickets,previous:u.previous,total:u.total,universeSize:u.size,c4,c5,p4:c4/u.size,p5:c5/u.size,
+    return {tickets,previous:u.previous,total:u.total,universeSize:u.size,filterStats:S.FILTERS.map((name,i)=>({name,independent:u.independent[i],sequential:u.sequential[i]})),c4,c5,p4:c4/u.size,p5:c5/u.size,
       histogram,individual,matrix,upper,verified:true,checked,globalOptimal:false};
   }
   function run(options={},emit=()=>{}) {
-    const started=Date.now(),previous=validateInput(options.previous),n=options.n===undefined?45:options.n;
+    const started=Date.now(),ctx=options.previous?{previous:validateInput(options.previous),history:options.history||[],mode:'test',targetDraw:null,previousDraw:null}:S.context(options.records||[],options.mode||'live',options.targetDraw);
+    ctx.history=ctx.history.map((r,i)=>Array.isArray(r)?{draw:i+1,numbers:validateInput(r)}:r);
+    const previous=ctx.previous,n=options.n===undefined?45:options.n;
     const restarts=options.restarts===undefined?2:options.restarts,seed=options.seed===undefined?20260908:options.seed;
     if(!Number.isInteger(restarts)||restarts<0||restarts>10) throw Error('추가 재시작은 0~10회입니다.');
     if(!Number.isInteger(seed)||seed<0||seed>4294967295) throw Error('seed 범위 오류');
@@ -281,7 +270,7 @@ function createLottoEngine() {
       emit({type:'progress',stage,detail,scan,elapsedMs:now-started,...extra});
     }
     progress('universe','전체 조합 필터링 · 부분집합 집계',0);
-    const u=generateUniverse(previous,n,p=>progress('universe','전체 조합 필터링 · 부분집합 집계',p));
+    const u=generateUniverse(previous,n,p=>progress('universe','9조건 필터링 · 부분집합 집계',p),ctx.history);
     // One state reused for all restarts: old large arrays never accumulate.
     const state=new CoverageState(u),primaries=[];let record=0,randomState=seed>>>0;
     function random() {randomState=(randomState+0x6D2B79F5)>>>0;let t=randomState;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;}
@@ -300,12 +289,13 @@ function createLottoEngine() {
       record=local.record;finalists.push({selected:local.selected,c4:state.c4,c5:state.c5});
     }
     const feasible=finalists.filter(x=>x.c4*1000>=record*995);
-    feasible.sort((a,b)=>b.c5-a.c5||b.c4-a.c4);
+    function totalOverlap(ids){const rows=ids.map(id=>Array.from(unrank(id,n)));let sum=0;for(let i=0;i<rows.length;i++)for(let j=0;j<i;j++)sum+=rows[i].filter(x=>rows[j].includes(x)).length;return sum;}
+    feasible.sort((a,b)=>b.c5-a.c5||b.c4-a.c4||totalOverlap(a.selected)-totalOverlap(b.selected));
     const chosen=feasible[0];
     const result=evaluatePortfolio(u,chosen.selected,p=>progress('verify','전체 Universe와 10게임 독립 검산',p));
     if(result.c4!==chosen.c4||result.c5!==chosen.c5) throw Error('최적화 상태와 최종 검산 불일치');
-    return {...result,record,restarts,seed,elapsedMs:Date.now()-started,createdAt:new Date().toISOString(),
-      version:1,algorithm:'전체 후보 greedy + 전수 1장 교체 + 다중 초기해',
+    return {...result,record,restarts,seed,iterations:{...state.metrics},elapsedMs:Date.now()-started,createdAt:new Date().toISOString(),
+      version:3,filterVersion:9,mode:ctx.mode,targetDraw:ctx.targetDraw,previousDraw:ctx.previousDraw,historyFilter:true,historyInfo:{...(options.historyInfo||{}),first:ctx.history.length?1:0,last:ctx.previousDraw||0,total:ctx.history.length,fingerprint:S.fingerprint(ctx.history)},algorithm:'전체 후보 greedy + 전수 1장 교체 + 다중 초기해',
       arrayBytes:u.bits.byteLength+u.d4.byteLength+u.d5.byteLength+state.d4.byteLength+state.d5.byteLength+
       state.e5.byteLength+state.refs4.byteLength+state.refs5.byteLength};
   }
