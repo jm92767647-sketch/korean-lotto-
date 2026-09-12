@@ -1,15 +1,9 @@
 {
-  "retrievedOn": "2026-09-09",
-  "source": "https://www.dhlottery.co.kr/lt645/selectPstLt645InfoNew.do",
-  "draws": 1240,
+  "source": "https://www.dhlottery.co.kr/selectMainInfo.do",
+  "roundSource": "https://www.dhlottery.co.kr/lt645/selectPstLt645InfoNew.do?srchDir=center&srchLtEpsd=",
   "first": 1,
-  "last": 1240,
-  "mirror": "https://github.com/johyunchol/lottogo-python",
-  "mirrorCompared": 1240,
-  "differences": [],
-  "sha256": "647891a44cec0ce4c8bec0f3d1b921924234c171eb97f33506b7ec552b40687b",
-  "excludedInvalidMirrorDraws": [
-    -1
-  ],
-  "retrievedAt": "2026-09-09T12:58:38.513Z"
+  "last": 1241,
+  "total": 1241,
+  "fetchedAt": "2026-09-12T13:21:07.801Z",
+  "sha256": "7c791c203a689fa9231661036e6db80879325278c2a58c557efd8d744e30dbb6"
 }
