@@ -2,8 +2,8 @@
   "source": "https://www.dhlottery.co.kr/selectMainInfo.do",
   "roundSource": "https://www.dhlottery.co.kr/lt645/selectPstLt645InfoNew.do?srchDir=center&srchLtEpsd=",
   "first": 1,
-  "last": 1242,
-  "total": 1242,
-  "fetchedAt": "2026-09-26T13:21:24.976Z",
-  "sha256": "ce56a16622b841934ca5f4890dd7f57206d83911d49a83b2601c68ae3f74813d"
+  "last": 1244,
+  "total": 1244,
+  "fetchedAt": "2026-10-03T18:20:36.689Z",
+  "sha256": "aa18044655a287080b47a5af50ca2be7a548e47b5a87031ca39af8e0c9f35a0e"
 }
